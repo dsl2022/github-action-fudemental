@@ -1,0 +1,73 @@
+# WHY THIS WORKFLOW EXISTS
+# A REUSABLE workflow — designed to be invoked by ANOTHER workflow via
+# `uses:` and `workflow_call`. Lives in .github/workflows/ like any other.
+#
+# Three things you must remember about reusable workflows:
+#   1. `inputs:` declared under workflow_call become available as
+#      `inputs.<name>` inside this file.
+#   2. `secrets:` do NOT auto-inherit into reusable workflows — the caller
+#      must either pass them explicitly or use `secrets: inherit`.
+#   3. `outputs:` declared at the WORKFLOW level (under workflow_call) are
+#      what the caller can read. Their values map to JOB outputs, which in
+#      turn map to STEP outputs. Three levels — easy to misroute one.
+
+name: 07 · reusable (called)
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Environment to "deploy" to.
+        type: string
+        required: true
+
+      # ----- TODO #1 -----
+      # Declare an optional boolean input `dry_run`, default true.
+      # Hint:
+      #   dry_run:
+      #     description: ...
+      #     type: boolean
+      #     required: false
+      #     default: true
+
+    # ----- TODO #2 -----
+    # Declare a workflow-level `outputs:` block exposing `result`. The value
+    # should be `${{ jobs.do.outputs.result }}`.
+    # Hint:
+    #   outputs:
+    #     result:
+    #       description: ...
+    #       value: ${{ jobs.do.outputs.result }}
+
+    secrets:
+      # Secrets must be declared here for a reusable workflow to receive them
+      # from the caller (unless the caller uses `secrets: inherit`).
+      API_TOKEN:
+        required: true
+
+jobs:
+  do:
+    runs-on: ubuntu-latest
+    # ----- TODO #3 -----
+    # Declare `outputs.result` here, mapping to `steps.act.outputs.result`.
+    # Hint:
+    #   outputs:
+    #     result: ${{ steps.act.outputs.result }}
+    steps:
+      - id: act
+        env:
+          # Never echo a secret. Pull it into an env var (still masked in
+          # logs because the runner knows the secret value) and use it as
+          # data only.
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          echo "deploying to ${{ inputs.target }}"
+          # ----- TODO #4 -----
+          # Once you've added `dry_run` above, gate the "would-run" message
+          # on it. For now, this just prints the target.
+          # Suggestion:
+          #   if [ "${{ inputs.dry_run }}" = "true" ]; then
+          #     echo "(dry run — no side effects)"
+          #   fi
+          echo "token chars: ${#API_TOKEN}"   # length only, never the value
+          echo "result=deployed-to-${{ inputs.target }}" >> "$GITHUB_OUTPUT"

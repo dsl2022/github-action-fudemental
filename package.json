@@ -1,0 +1,17 @@
+{
+  "name": "tasks-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Incidental Express app. The point of this repo is the workflows in .github/, not this code.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

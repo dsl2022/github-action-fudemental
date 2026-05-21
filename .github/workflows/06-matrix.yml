@@ -1,0 +1,86 @@
+# WHY THIS WORKFLOW EXISTS
+# Matrix strategy — run the same job over a cross-product of values. Plus:
+#   - `include:` adds specific combinations (or extra fields to existing ones)
+#   - `exclude:` removes specific combinations
+#   - `fail-fast: false` lets all combinations run even if one fails
+#   - dynamic matrix: build the matrix from a previous job's output via
+#     `fromJSON(needs.X.outputs.Y)`. Use this to fan out based on data
+#     computed at run time (e.g. one job per changed package).
+
+name: 06 · matrix
+
+on:
+  workflow_dispatch:
+
+jobs:
+  static:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # When false, sibling matrix jobs continue even if one fails. Default
+      # is true (failures cancel the rest), which is usually NOT what you want
+      # for a cross-platform test matrix.
+      fail-fast: false
+      matrix:
+        # ----- TODO #1 -----
+        # Declare these axes:
+        #   os:      [ubuntu-latest, macos-latest, windows-latest]
+        #   node:    [18, 20, 22]
+        #   variant: [a, b, c]
+        # Cross-product = 27 combinations. Then use `exclude:` to remove
+        # combinations so EXACTLY 6 remain.
+        # Document WHICH 6 you kept in a YAML comment above your exclude.
+        #
+        # Hint (exclude syntax):
+        #   exclude:
+        #     - os: windows-latest
+        #       node: 18
+        #     - os: macos-latest
+        #       variant: c
+        #
+        # Hint (include syntax — bonus): adding entries via include adds new
+        # combinations (or annotates existing ones with extra fields).
+        # See solutions/06-matrix.yml after you've made your own attempt.
+        # Single-element placeholders so the file is parseable as-is.
+        # Replace before doing the exclude exercise.
+        os: [ubuntu-latest]        # TODO: expand to all three OSes
+        node: [20]                 # TODO: expand to [18, 20, 22]
+        variant: [a]               # TODO: expand to [a, b, c]
+        # exclude:
+        #   - ...
+    steps:
+      - name: introspect
+        # `matrix` context is per-combination. job.id will be like
+        # "static (ubuntu-latest, 20, a)" in the UI.
+        run: |
+          echo "os=${{ matrix.os }}"
+          echo "node=${{ matrix.node }}"
+          echo "variant=${{ matrix.variant }}"
+
+  # ----- TODO #2 -----  DYNAMIC MATRIX
+  # Add two jobs: `plan` (computes the matrix) and `apply` (fans out).
+  #
+  #   plan:
+  #     runs-on: ubuntu-latest
+  #     outputs:
+  #       targets: <map to a step output>
+  #     steps:
+  #       - id: build
+  #         run: |
+  #           echo 'targets=["dev","staging","prod"]' >> "$GITHUB_OUTPUT"
+  #
+  #   apply:
+  #     needs: plan
+  #     runs-on: ubuntu-latest
+  #     strategy:
+  #       matrix:
+  #         target: ${{ fromJSON(needs.plan.outputs.targets) }}
+  #     steps:
+  #       - run: echo "applying to ${{ matrix.target }}"
+  #
+  # Notes:
+  #   - `fromJSON` parses a JSON string into an object/array. The whole point
+  #     of dynamic matrices is that the SHAPE of the matrix is computed at
+  #     run time, not declared at edit time.
+  #   - `targets` must be a JSON array; arrays of objects also work and let
+  #     you fan out with multiple fields per combination, e.g.
+  #     [{"name":"dev","region":"us"},{"name":"prod","region":"eu"}].

@@ -1,0 +1,62 @@
+# Completed reference for workflow 05.
+
+name: 05 · jobs DAG
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    outputs:
+      lint_version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.4
+        with:
+          node-version: 20
+      - id: v
+        run: |
+          echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+          echo "(pretend lint passed)"
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+      - run: echo "tested against node ${{ needs.lint.outputs.lint_version }}"
+
+  # TODO #1 — build depends on both lint AND test
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "building..."
+          echo "lint_version was ${{ needs.lint.outputs.lint_version }}"
+
+  # TODO #2 — deploy only on workflow_dispatch
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "deploying"
+          echo "lint_version was ${{ needs.lint.outputs.lint_version }}"
+
+  # TODO #3 — notify even if deploy skipped or failed (but not on cancel)
+  notify:
+    needs: deploy
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "deploy result: ${{ needs.deploy.result }}"

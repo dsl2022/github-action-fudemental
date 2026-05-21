@@ -1,0 +1,253 @@
+# WHY THIS WORKFLOW EXISTS
+# A single place to SEE every Actions context (github, env, vars, secrets,
+# runner, job, steps, needs, matrix, inputs) and the difference between:
+#   - EXPRESSION evaluation:  ${{ ... }} happens before the shell runs.
+#                             The RUNNER substitutes a string into the file.
+#   - SHELL execution:        what bash/pwsh sees is already-substituted text.
+# That distinction is the entire reason script injection exists. The bottom
+# of this file shows BOTH a SAFE and an INTENTIONALLY DANGEROUS interpolation
+# pattern. EXERCISES.md will ask you to find and fix the dangerous one.
+
+name: 03 · contexts
+
+on:
+  workflow_dispatch:
+    inputs:
+      free_text:
+        description: "Free-form string (try: ; echo PWNED; # to test injection)"
+        type: string
+        default: hello
+  pull_request:
+
+# Workflow-level env: inherited by every job and every step unless overridden.
+env:
+  GLOBAL_ENV: workflow-level
+
+jobs:
+  # First job intentionally uses matrix + outputs so the dump job downstream
+  # can reference `matrix` (within itself) and `needs` (from elsewhere).
+  matrix-job:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        flavor: [alpha, beta]
+    outputs:
+      # Job-level `outputs:` map to a step output via the steps context.
+      # Downstream jobs read these as `needs.matrix-job.outputs.last_flavor`.
+      last_flavor: ${{ steps.compute.outputs.flavor }}
+    steps:
+      - name: Dump matrix context
+        env:
+          MATRIX_JSON: ${{ toJSON(matrix) }}
+        run: |
+          echo "## matrix (flavor=${{ matrix.flavor }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "$MATRIX_JSON" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - id: compute
+        run: echo "flavor=${{ matrix.flavor }}" >> "$GITHUB_OUTPUT"
+
+  dump:
+    needs: matrix-job
+    runs-on: ubuntu-latest
+    env:
+      JOB_ENV: job-level  # job-level env overlays workflow-level env
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # github — the event that triggered the run, plus repo info
+      # ---------------------------------------------------------
+      - name: github context
+        env:
+          # `toJSON(<context>)` serializes any context to a JSON string.
+          # We capture it in an env var so the shell never sees the raw
+          # interpolation as code (see SAFE/DANGEROUS section below).
+          BODY: ${{ toJSON(github) }}
+        run: |
+          {
+            echo "## github"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # env — actual OS environment variables on the runner
+      # ---------------------------------------------------------
+      # NOTE: `env` context in `${{ env.X }}` ≠ shell `$X`. They normally
+      # match, but `env` context is resolved at expression-eval time, while
+      # `$X` is resolved by the shell when the line executes.
+      - name: env context
+        run: |
+          {
+            echo "## env (selected)"
+            echo '- GLOBAL_ENV (workflow-level):  ' "$GLOBAL_ENV"
+            echo '- JOB_ENV    (job-level):       ' "$JOB_ENV"
+            echo '- GITHUB_REPOSITORY:            ' "$GITHUB_REPOSITORY"
+            echo '- via expression env.GLOBAL_ENV:' "${{ env.GLOBAL_ENV }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # vars — repo/org/environment Variables (UI-configured)
+      # ---------------------------------------------------------
+      # Configure under Settings → Secrets and variables → Actions → Variables.
+      # README.md tells you to set one called `DEPLOY_ENV`.
+      - name: vars context
+        env:
+          BODY: ${{ toJSON(vars) }}
+        run: |
+          {
+            echo "## vars"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # secrets — UI-configured secrets; values are masked in logs
+      # ---------------------------------------------------------
+      # Configure under Settings → Secrets and variables → Actions → Secrets.
+      # README.md tells you to set one called `API_TOKEN`. Even via toJSON,
+      # the runner masks any string that matches a secret value.
+      # GOTCHA: masking is by *exact substring*. If you transform the secret
+      # (base64, jq, slice), the transformed value is NOT masked.
+      - name: secrets context (masked)
+        env:
+          BODY: ${{ toJSON(secrets) }}
+        run: |
+          {
+            echo "## secrets (values are ***-masked)"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # runner — info about the runner VM
+      # ---------------------------------------------------------
+      - name: runner context
+        env:
+          BODY: ${{ toJSON(runner) }}
+        run: |
+          {
+            echo "## runner"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # job — info about the currently running job
+      # ---------------------------------------------------------
+      # job.status is the live status — useful inside `if:` to chain steps.
+      - name: job context
+        env:
+          BODY: ${{ toJSON(job) }}
+        run: |
+          {
+            echo "## job"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # needs — outputs from upstream jobs (job DAG)
+      # ---------------------------------------------------------
+      - name: needs context
+        env:
+          BODY: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "## needs"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+            echo "- needs.matrix-job.outputs.last_flavor: ${{ needs.matrix-job.outputs.last_flavor }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # inputs — workflow_dispatch / workflow_call inputs
+      # ---------------------------------------------------------
+      # `inputs` is null when the workflow wasn't triggered by dispatch/call,
+      # so we wrap with toJSON which returns "null" rather than erroring.
+      - name: inputs context
+        env:
+          BODY: ${{ toJSON(inputs) }}
+        run: |
+          {
+            echo "## inputs"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------
+      # steps — outputs from PRIOR steps IN THIS JOB
+      # ---------------------------------------------------------
+      - id: writer
+        name: write output, env, summary
+        run: |
+          # $GITHUB_OUTPUT is a file. Append `key=value` to expose `outputs.key`
+          # on the steps context. For multi-line outputs, use the heredoc form:
+          #   echo "key<<EOF" >> "$GITHUB_OUTPUT"
+          #   echo "multi"   >> "$GITHUB_OUTPUT"
+          #   echo "line"    >> "$GITHUB_OUTPUT"
+          #   echo "EOF"     >> "$GITHUB_OUTPUT"
+          echo "answer=42" >> "$GITHUB_OUTPUT"
+
+          # $GITHUB_ENV exports env vars to LATER steps in the same job only.
+          # Newer steps see them in `$NAME` and `env.NAME`. Steps already
+          # executed do not retroactively see them.
+          echo "LATER_ENV=visible-in-next-step" >> "$GITHUB_ENV"
+
+          # $GITHUB_STEP_SUMMARY is markdown rendered on the run page.
+          echo "### writer step done" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: read what writer wrote (steps context)
+        env:
+          BODY: ${{ toJSON(steps) }}
+        run: |
+          echo "answer (via steps context) = ${{ steps.writer.outputs.answer }}"
+          echo "LATER_ENV (via shell env)  = $LATER_ENV"
+          {
+            echo "## steps"
+            echo '```json'
+            echo "$BODY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # =====================================================================
+      # SAFE vs DANGEROUS interpolation — pay attention.
+      # =====================================================================
+      # The model: ${{ ... }} is substituted BY THE RUNNER into the run script
+      # BEFORE the shell executes. Whatever the expression evaluates to becomes
+      # raw text in the script. If that text contains shell metacharacters and
+      # the text is attacker-controlled, the attacker controls the shell.
+
+      # --- SAFE pattern -----------------------------------------------------
+      # The attacker-controlled value is exported as an env var. The shell
+      # sees `$USER_INPUT`, which is read as DATA, never as code.
+      - name: SAFE - echo user input via env
+        env:
+          USER_INPUT: ${{ inputs.free_text }}
+        run: |
+          echo "user said: $USER_INPUT"
+
+      # --- DANGEROUS pattern (find and fix me) -----------------------------
+      # WARNING: SCRIPT INJECTION. The expression is interpolated DIRECTLY
+      # into the shell command, so an attacker who controls `free_text` can
+      # break out of the string and run arbitrary commands.
+      #
+      # Reproduce locally:
+      #   1. Click "Run workflow" on workflow 03.
+      #   2. In `free_text`, paste:    "; echo PWNED; #
+      #   3. Watch the logs: you'll see PWNED printed as its own command.
+      #
+      # The fix is to use the SAFE pattern above (env var passthrough).
+      # EXERCISES.md task #4 walks you through it.
+      - name: DANGEROUS - echo user input via interpolation   # <-- VULNERABLE
+        run: |
+          echo "user said: ${{ inputs.free_text }}"

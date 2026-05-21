@@ -1,0 +1,64 @@
+# Completed reference for workflow 04.
+
+name: 04 · conditionals
+
+on:
+  workflow_dispatch:
+    inputs:
+      should_fail:
+        description: Force the first step to fail?
+        type: boolean
+        default: false
+  pull_request:
+  push:
+
+jobs:
+  flaky:
+    runs-on: ubuntu-latest
+    steps:
+      - name: maybe fail
+        run: |
+          if [ "${{ inputs.should_fail }}" = "true" ]; then
+            echo "user asked for failure"
+            exit 1
+          fi
+          echo "all good"
+
+      - name: on failure
+        if: failure()
+        run: echo "the step above failed — running cleanup"
+
+      - name: always run
+        if: always()
+        run: echo "I run no matter what (except cancellation)"
+
+      # TODO #1 — success() + push to main
+      - name: deploy gate (push to main only)
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: echo "would deploy from main"
+
+  pr-only:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: echo "this job runs only for PRs"
+
+      # TODO #2 — title contains "[deploy]"
+      - name: PR opted into deploy
+        if: ${{ contains(github.event.pull_request.title, '[deploy]') }}
+        run: echo "PR title opted into deploy"
+
+  branch-gate:
+    runs-on: ubuntu-latest
+    # TODO #3 — only run on feature/* branches
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') }}
+    steps:
+      - run: echo "I only run on feature/* branches"
+
+  log-event:
+    runs-on: ubuntu-latest
+    steps:
+      - name: explain why I ran
+        run: |
+          REASON="${{ github.event_name == 'workflow_dispatch' && 'manual run' || 'auto-triggered' }}"
+          echo "ran because: $REASON"

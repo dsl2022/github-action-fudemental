@@ -1,0 +1,85 @@
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm
+.yarn/
+.pnp.*
+.yarn-integrity
+
+# --- Build output ---
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Caches ---
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.next/
+.nuxt/
+.turbo/
+.vite/
+
+# --- Test / coverage ---
+.nyc_output/
+junit.xml
+
+# --- OS: macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# --- OS: Windows ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- OS: Linux ---
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# --- Editors / IDEs ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# --- Claude Code / AI assistants ---
+.claude/
+.aider*
+
+# --- Misc ---
+*.tgz
+*.zip
+.tmp/
+tmp/

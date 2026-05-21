@@ -1,0 +1,63 @@
+# Completed reference for workflow 06.
+# The 6 kept combinations were chosen to cover:
+#   - all three OSes at least once
+#   - all three Node versions at least once
+#   - all three variants at least once
+
+name: 06 · matrix
+
+on:
+  workflow_dispatch:
+
+jobs:
+  static:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20, 22]
+        variant: [a, b, c]
+        exclude:
+          # Keep ubuntu × (18,a), (20,b), (22,c)
+          - { os: ubuntu-latest,  node: 18, variant: b }
+          - { os: ubuntu-latest,  node: 18, variant: c }
+          - { os: ubuntu-latest,  node: 20, variant: a }
+          - { os: ubuntu-latest,  node: 20, variant: c }
+          - { os: ubuntu-latest,  node: 22, variant: a }
+          - { os: ubuntu-latest,  node: 22, variant: b }
+          # Keep macos × (20,a), (22,b)
+          - { os: macos-latest,   node: 18 }
+          - { os: macos-latest,   node: 20, variant: b }
+          - { os: macos-latest,   node: 20, variant: c }
+          - { os: macos-latest,   node: 22, variant: a }
+          - { os: macos-latest,   node: 22, variant: c }
+          # Keep windows × (18,c)
+          - { os: windows-latest, node: 18, variant: a }
+          - { os: windows-latest, node: 18, variant: b }
+          - { os: windows-latest, node: 20 }
+          - { os: windows-latest, node: 22 }
+    steps:
+      - run: |
+          echo "os=${{ matrix.os }}"
+          echo "node=${{ matrix.node }}"
+          echo "variant=${{ matrix.variant }}"
+
+  # TODO #2 — dynamic matrix
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.build.outputs.targets }}
+    steps:
+      - id: build
+        run: |
+          echo 'targets=["dev","staging","prod"]' >> "$GITHUB_OUTPUT"
+
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    steps:
+      - run: echo "applying to ${{ matrix.target }}"

@@ -1,0 +1,156 @@
+# WHY THIS WORKFLOW EXISTS
+# Demonstrates EVERY common trigger in one file. Not all of them will fire
+# every push — but reading this gives you the syntax for all of them in one
+# place. Treat this as a reference card.
+#
+# Triggers covered:
+#   - push                  (with branches / paths-ignore filters)
+#   - pull_request          (with types + branches filters)
+#   - schedule              (cron in UTC)
+#   - workflow_dispatch     (with typed inputs: choice, boolean, string)
+#   - workflow_call         (callable from another workflow — see workflow 08)
+#   - workflow_run          (fires when ANOTHER workflow completes)
+#   - repository_dispatch   (fires from a REST API POST)
+
+name: 02 · triggers
+
+on:
+  # =============================================================
+  # push — fires when commits land on the branches you specify
+  # =============================================================
+  # Filter keys you can combine: branches, branches-ignore, paths,
+  # paths-ignore, tags, tags-ignore. branches + branches-ignore CANNOT
+  # both be set; same for paths/paths-ignore.
+  push:
+    branches:
+      - main
+      - 'feature/**'       # glob: any branch under feature/
+    # EXERCISE: add a `paths:` filter here so this workflow only runs when
+    # files under src/ change (see EXERCISES.md task #2).
+    paths-ignore:
+      - 'README.md'        # README-only edits skip this workflow
+
+  # =============================================================
+  # pull_request — fires on PR lifecycle events
+  # =============================================================
+  # Default types are [opened, synchronize, reopened]. Set `types:` to
+  # narrow (or widen — e.g. labeled, ready_for_review, closed).
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches: [main]
+
+  # =============================================================
+  # schedule — cron in UTC
+  # =============================================================
+  # Five fields: minute hour day-of-month month day-of-week.
+  # GitHub may delay (or skip) cron runs during high load. Cron only fires
+  # on the default branch of the repo. Use cron sparingly.
+  schedule:
+    - cron: "17 7 * * 1"  # 07:17 UTC every Monday — "the boring weekly job"
+
+  # =============================================================
+  # workflow_dispatch — manual run via UI or `gh workflow run`
+  # =============================================================
+  # `inputs:` become form fields in the UI. Available types:
+  #   string  (default)   - free text
+  #   boolean             - checkbox
+  #   choice              - dropdown, needs `options:`
+  #   environment         - GitHub Environment picker
+  # Reference them in steps via `${{ inputs.<name> }}` (or for backwards
+  # compat: `${{ github.event.inputs.<name> }}` — same data, both work).
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+        required: true
+      dry_run:
+        description: Skip side effects?
+        type: boolean
+        default: true
+      release_tag:
+        description: Optional release tag (e.g. v1.2.3)
+        type: string
+        required: false
+
+  # =============================================================
+  # workflow_call — lets another workflow `uses:` this file
+  # =============================================================
+  # Inputs and secrets are explicit here; outputs are exposed back to the
+  # caller via `value:` expressions referencing job outputs. See workflow 08
+  # for the calling side — though this particular workflow isn't itself
+  # called from 08 (workflow 07 is — kept here purely to show the syntax).
+  workflow_call:
+    inputs:
+      caller_msg:
+        description: A message from the calling workflow.
+        type: string
+        required: true
+    outputs:
+      echoed:
+        description: The same message echoed back to the caller.
+        value: ${{ jobs.echo-call.outputs.echoed }}
+
+  # =============================================================
+  # workflow_run — fan-out / cleanup when another workflow finishes
+  # =============================================================
+  # Use this for jobs that depend on another workflow's completion, e.g.
+  # "post a comment after CI finishes". GOTCHA: workflow_run always runs
+  # against the DEFAULT branch's copy of the workflow file, regardless of
+  # which branch triggered the upstream workflow. Don't put PR-mergeable
+  # workflows here without thinking about that.
+  workflow_run:
+    workflows: ["01 · hello"]
+    types: [completed]
+
+  # =============================================================
+  # repository_dispatch — fire from an external POST request
+  # =============================================================
+  # Trigger via:
+  #   gh api repos/{owner}/{repo}/dispatches -f event_type=run-deploy
+  # Or from another GitHub-hosted action with a PAT. `types:` filters by
+  # the event_type field of the payload.
+  repository_dispatch:
+    types: [run-deploy, run-cleanup]
+
+jobs:
+  identify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: What triggered me?
+        # github.event_name tells you which trigger fired (push/pull_request/
+        # schedule/workflow_dispatch/workflow_call/workflow_run/
+        # repository_dispatch). github.event holds the full event payload —
+        # try `echo '${{ toJSON(github.event) }}'` if you want the firehose.
+        run: |
+          echo "event: ${{ github.event_name }}"
+          echo "ref:   ${{ github.ref }}"
+          echo "actor: ${{ github.actor }}"
+          echo "sha:   ${{ github.sha }}"
+
+  echo-dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show dispatch inputs
+        run: |
+          echo "environment=${{ inputs.environment }}"
+          echo "dry_run=${{ inputs.dry_run }}"
+          echo "release_tag=${{ inputs.release_tag }}"
+
+  echo-call:
+    # Only meaningful when invoked via workflow_call. The `if:` keeps it from
+    # running on other triggers (where `inputs.caller_msg` would be empty).
+    if: github.event_name == 'workflow_call'
+    runs-on: ubuntu-latest
+    outputs:
+      echoed: ${{ steps.echo.outputs.echoed }}
+    steps:
+      - id: echo
+        env:
+          MSG: ${{ inputs.caller_msg }}
+        # NOTE: we route inputs.caller_msg through an env var, NOT directly
+        # into the shell — same script-injection caution as workflow 03.
+        run: echo "echoed=$MSG" >> "$GITHUB_OUTPUT"

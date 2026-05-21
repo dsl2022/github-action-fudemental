@@ -1,0 +1,40 @@
+# Completed reference for workflow 07.
+
+name: 07 · reusable (called)
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Environment to "deploy" to.
+        type: string
+        required: true
+      dry_run:
+        description: Skip side effects?
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      result:
+        description: Where we "deployed" to.
+        value: ${{ jobs.do.outputs.result }}
+    secrets:
+      API_TOKEN:
+        required: true
+
+jobs:
+  do:
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.act.outputs.result }}
+    steps:
+      - id: act
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          echo "deploying to ${{ inputs.target }}"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "(dry run — no side effects)"
+          fi
+          echo "token chars: ${#API_TOKEN}"
+          echo "result=deployed-to-${{ inputs.target }}" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,121 @@
+# WHY THIS WORKFLOW EXISTS
+# Conditional execution. Two levels:
+#   - JOB-level  `if:`  — skips the whole job if false
+#   - STEP-level `if:`  — skips just that step
+#
+# Status functions you can use inside `if:` (no ${{ }} needed; they auto-
+# evaluate, but ${{ }} is fine too):
+#   success()    — true if all PREVIOUS steps in this job succeeded
+#   failure()    — true if any PREVIOUS step failed (and not cancelled)
+#   always()     — true even on failure; NOT true on cancellation
+#   cancelled()  — true if the job/run was cancelled
+#
+# Default `if:` when omitted is `success()`. So if a previous step fails,
+# subsequent steps are skipped by default. That's why you need `if: failure()`
+# or `if: always()` to run cleanup/notify steps.
+#
+# Expression operators: == != && || ! (), plus helpers like contains(),
+# startsWith(), endsWith(), format(), fromJSON(), toJSON(), hashFiles().
+
+name: 04 · conditionals
+
+on:
+  workflow_dispatch:
+    inputs:
+      should_fail:
+        description: Force the first step to fail?
+        type: boolean
+        default: false
+  pull_request:
+  push:
+
+jobs:
+  flaky:
+    runs-on: ubuntu-latest
+    steps:
+      - name: maybe fail
+        # `inputs.should_fail` is a boolean. In YAML/expressions, GitHub
+        # exposes booleans as the strings "true" / "false". Compare to
+        # the string form, not Python-style truthiness.
+        run: |
+          if [ "${{ inputs.should_fail }}" = "true" ]; then
+            echo "user asked for failure"
+            exit 1
+          fi
+          echo "all good"
+
+      # `if: failure()` runs only when a previous step in this job FAILED.
+      # Typical use: emit a diagnostic, post to Slack, upload a crashdump.
+      - name: on failure
+        if: failure()
+        run: echo "the step above failed — running cleanup"
+
+      # `if: always()` runs regardless of previous step status, BUT NOT on
+      # cancellation. For "truly always, even on cancel", use:
+      #   if: ${{ !cancelled() }} || always() && cancelled()
+      # ...or more practically, just `if: always()` for cleanup and accept
+      # that cancelled jobs may be torn down before this step gets to run.
+      - name: always run
+        if: always()
+        run: echo "I run no matter what (except cancellation)"
+
+      # ----- TODO #1 -----
+      # Add a step that runs ONLY when:
+      #   (a) all previous steps in this job succeeded, AND
+      #   (b) the workflow was triggered by a push to the main branch.
+      #
+      # Hints:
+      #   - The default `if:` is success(); be explicit anyway for practice.
+      #   - github.event_name will be 'push'
+      #   - github.ref for a push to main is 'refs/heads/main'
+      #     (NOT just 'main' — that distinction trips people up)
+      #   - Combine conditions with `&&` inside one ${{ }} block.
+      # Step name suggestion: "deploy gate (push to main only)"
+
+  pr-only:
+    runs-on: ubuntu-latest
+    # Job-level `if:` — if false, the whole job shows as "skipped" in the UI.
+    # Downstream jobs that `needs:` this one will treat it as not-succeeded
+    # (which means they're skipped too, unless they use always()/!cancelled()).
+    if: github.event_name == 'pull_request'
+    steps:
+      - run: echo "this job runs only for PRs"
+
+      # ----- TODO #2 -----
+      # Add a step that runs only when the PR title contains the substring
+      # "[deploy]".
+      #
+      # Hints:
+      #   - github.event.pull_request.title holds the title.
+      #   - contains(haystack, needle) returns true/false.
+      #   - Wrap the whole condition in ${{ ... }}.
+      # Step name suggestion: "PR opted into deploy"
+
+  branch-gate:
+    runs-on: ubuntu-latest
+    # ----- TODO #3 -----
+    # Add a job-level `if:` so this job runs ONLY when the current ref is a
+    # branch whose name starts with "feature/".
+    #
+    # Hints:
+    #   - For a push, github.ref looks like 'refs/heads/feature/foo'
+    #   - For a PR, github.ref looks like 'refs/pull/123/merge' — so
+    #     consider whether you want this to gate on the PR head branch
+    #     (github.head_ref) instead. For this exercise, gate on github.ref
+    #     and accept that PRs from feature/* branches won't satisfy it —
+    #     we'll fix that nuance in EXERCISES.md.
+    #   - startsWith(string, prefix) returns true/false.
+    # if: <fill me in>
+    steps:
+      - run: echo "I only run on feature/* branches"
+
+  # Showcase: matrix entries can be filtered with `if:` too. Job-level `if:`
+  # is fully evaluated; each matrix combination's job inherits the same `if:`.
+  log-event:
+    runs-on: ubuntu-latest
+    steps:
+      - name: explain why I ran
+        # Inline ternary-ish pattern using && / || (short-circuiting strings).
+        run: |
+          REASON="${{ github.event_name == 'workflow_dispatch' && 'manual run' || 'auto-triggered' }}"
+          echo "ran because: $REASON"

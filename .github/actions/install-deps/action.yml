@@ -1,0 +1,49 @@
+# WHY THIS ACTION EXISTS
+# A composite action bundles N steps into a single reusable unit, callable as:
+#   - uses: ./.github/actions/install-deps
+# Composite actions live in the repo (no marketplace publish required). They
+# can accept typed `inputs`, expose `outputs`, and contain any step type that
+# regular workflows can use. Use them to DRY up duplicated setup/teardown.
+#
+# Anatomy:
+#   name / description  — shown in logs and (if published) in the marketplace
+#   inputs              — typed parameters callers pass in via `with:`
+#   outputs             — values callers read via `steps.<id>.outputs.<key>`
+#   runs.using          — must be "composite" for composite actions
+#   runs.steps          — ordered list, same as workflow `steps:` (with one
+#                         catch: each `run:` step MUST set `shell:`)
+
+name: install-deps
+description: Set up Node.js and install npm dependencies with a cache.
+
+inputs:
+  node-version:
+    description: Node.js major version to install.
+    required: false
+    default: "20"
+
+outputs:
+  # An output's `value:` is an expression evaluated in this action's context.
+  # Here we re-expose setup-node's cache-hit so callers can branch on it.
+  cache-hit:
+    description: Whether the npm cache restored exactly (true/false).
+    value: ${{ steps.setup.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      id: setup
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        # `cache: npm` makes setup-node hash package-lock.json and restore
+        # ~/.npm from the cache. This is the laziest cache wiring possible.
+        cache: npm
+
+    - name: Install
+      # NOTE: every `run:` step in a composite action MUST declare a `shell:`.
+      # In regular workflows the shell is inferred from the runner OS; in
+      # composite actions you state it explicitly.
+      shell: bash
+      run: npm ci

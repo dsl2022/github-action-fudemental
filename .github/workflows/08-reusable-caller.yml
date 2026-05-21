@@ -1,0 +1,61 @@
+# WHY THIS WORKFLOW EXISTS
+# Calls the reusable workflow in 07-reusable-called.yml. Demonstrates:
+#   - The `uses:` syntax for a local reusable workflow (path begins with ./)
+#   - Passing `with:` inputs and `secrets:` to the callee
+#   - Consuming the callee's outputs via `needs.<id>.outputs.<key>`
+#
+# Reusable workflow `uses:` paths:
+#   - Same repo:       ./.github/workflows/file.yml
+#   - Public/other:    owner/repo/.github/workflows/file.yml@ref
+# The path form for the same repo MUST start with "./" and refer to a file on
+# the SAME ref (commit) as the caller — you can't pin local reusables to a
+# different ref.
+
+name: 08 · reusable (caller)
+
+on:
+  workflow_dispatch:
+    inputs:
+      where:
+        description: Target environment
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+
+jobs:
+  # ----- TODO #1 -----
+  # Define a job `call` that invokes the reusable workflow at
+  #   ./.github/workflows/07-reusable-called.yml
+  # Pass:
+  #   - inputs.target  ← inputs.where
+  #   - inputs.dry_run ← true
+  # And forward secrets. Two ways:
+  #   (a) `secrets: inherit` — passes EVERY caller secret to the callee.
+  #       Convenient but broad. Avoid in cross-repo reuse.
+  #   (b) Name them explicitly:
+  #         secrets:
+  #           API_TOKEN: ${{ secrets.API_TOKEN }}
+  #
+  # Skeleton:
+  #   call:
+  #     uses: ./.github/workflows/07-reusable-called.yml
+  #     with:
+  #       target: ${{ inputs.where }}
+  #       dry_run: true
+  #     secrets: inherit
+  #
+  # IMPORTANT: a job that `uses:` a reusable workflow CANNOT also have its
+  # own `runs-on:` / `steps:`. It IS the reusable workflow's execution.
+
+  consume:
+    # needs the `call` job once you've defined it above.
+    needs: call
+    runs-on: ubuntu-latest
+    steps:
+      # ----- TODO #2 -----
+      # Print the `result` output exposed by the called workflow. You'll
+      # need to have completed TODO #2 in 07-reusable-called.yml first
+      # (declaring the workflow-level `outputs:` block).
+      # Hint:
+      #   echo "result was: ${{ needs.call.outputs.result }}"
+      - run: echo "TODO — print needs.call.outputs.result here"

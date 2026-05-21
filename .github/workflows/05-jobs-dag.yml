@@ -1,0 +1,81 @@
+# WHY THIS WORKFLOW EXISTS
+# Job DAGs. Jobs default to running in parallel; `needs:` introduces ordering
+# and creates a directed acyclic graph. Outputs from upstream jobs are
+# accessible to downstream jobs via the `needs` context.
+#
+# Skipped vs failed (this matters — interview gotcha):
+#   - If an upstream job is SKIPPED (its `if:` was false), downstream jobs
+#     that `needs:` it are ALSO skipped, unless they override with
+#     `if: always()` or `if: !cancelled()`.
+#   - If an upstream job FAILED, downstream jobs are SKIPPED (not failed),
+#     same override rules apply.
+#   - `needs.<job>.outputs.<key>` returns '' when the upstream was skipped.
+#
+# This file also shows a full commit-SHA pin for setup-node — the most secure
+# pinning style, because tags can be force-moved by the action's owner.
+
+name: 05 · jobs DAG
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    outputs:
+      # Job outputs MUST map to a step output via the steps context.
+      lint_version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to a full 40-char commit SHA — safest pinning style.
+      # The trailing comment is convention so humans know which version it is.
+      # To find the real SHA for a given tag:
+      #   gh api repos/actions/setup-node/git/refs/tags/v4.0.4 \
+      #     --jq '.object.sha'
+      # (You'll likely want to swap the SHA below for the result of that.)
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.4
+        with:
+          node-version: 20
+      - id: v
+        run: |
+          echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+          echo "(pretend lint passed against node $(node -p 'process.versions.node'))"
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+      - run: echo "tested against node ${{ needs.lint.outputs.lint_version }}"
+
+  # ----- TODO #1 -----
+  # Add a `build` job that:
+  #   - needs BOTH lint AND test (a job can list multiple deps as an array)
+  #   - has a single step that prints "building..." and the lint_version from
+  #     the lint job's outputs.
+  # Hint: `needs: [lint, test]`
+
+  # ----- TODO #2 -----
+  # Add a `deploy` job that:
+  #   - needs `build`
+  #   - runs ONLY when github.event_name == 'workflow_dispatch'
+  #   - prints "deploying" and the lint_version
+  # Hint: combine `needs:` with a job-level `if:`.
+
+  # ----- TODO #3 -----
+  # Add a `notify` job that:
+  #   - needs `deploy`
+  #   - runs EVEN IF `deploy` was skipped or failed (so you always get the
+  #     notification), but NOT if the run was cancelled.
+  # Hint: `if: ${{ !cancelled() }}`  — preferable to `if: always()` because
+  # always() also fires on cancellation, which is usually NOT what you want
+  # (it can prevent the runner from tearing down promptly).
+  # Inside, print:
+  #   "deploy result: ${{ needs.deploy.result }}"
+  # `needs.<job>.result` is one of: success | failure | cancelled | skipped.

@@ -1,0 +1,60 @@
+# WHY THIS WORKFLOW EXISTS
+# The "hello world" of GitHub Actions. Reading this top to bottom should
+# pattern-match the workflow → job → step hierarchy into your fingers.
+#
+# Hierarchy at a glance:
+#   WORKFLOW (this whole file)
+#     └── JOB (an isolated runner VM; jobs run in parallel by default)
+#           └── STEP (one action invocation, OR one shell command block)
+
+# `name:` is the label that appears in the Actions tab in the GitHub UI.
+# Optional. If omitted, GitHub uses the filename.
+name: 01 · hello
+
+# `on:` declares the triggers — when this workflow should run.
+# You can list one trigger, many triggers, or a single string ("on: push").
+on:
+  push:
+    branches: [main]      # only on pushes to main
+  workflow_dispatch:      # also lets you click "Run workflow" in the UI
+
+# A workflow contains one or more jobs under `jobs:`.
+# Each top-level key under `jobs:` is the job id (`hello` here). Job ids are
+# referenced by other jobs in `needs:` and by `if:` expressions.
+jobs:
+  hello:
+    # `runs-on:` picks the runner image. ubuntu-latest is the cheap default.
+    # Other options: ubuntu-22.04, macos-latest, windows-latest, or self-hosted.
+    runs-on: ubuntu-latest
+
+    # `steps:` is an ordered list. Each step is either:
+    #   - `uses:` to invoke an action (a reusable unit of code)
+    #   - `run:`  to execute shell commands directly on the runner
+    steps:
+      - name: Greet
+        # `|` is YAML for a literal block scalar — preserves newlines.
+        # Without it, YAML would fold the newlines into spaces.
+        run: |
+          echo "Hello from a GitHub Actions runner"
+          # ${{ ... }} is GitHub Actions expression syntax. It is evaluated
+          # by the RUNNER, not by the shell. The result is substituted
+          # before the shell sees the line. (This is also the source of
+          # the script-injection vuln you'll meet in workflow 03.)
+          echo "I am job: ${{ github.job }}"
+          echo "I was triggered by: ${{ github.event_name }}"
+
+      - name: Show what a step looks like with uses:
+        # `uses:` invokes a published action. `@v4` is a tag/branch reference.
+        # For production code, pinning to a full commit SHA is safer (see
+        # workflow 05 for an example). v4 is fine for a learning lab.
+        uses: actions/checkout@v4
+
+      - name: Use $GITHUB_STEP_SUMMARY
+        # Anything appended to the file $GITHUB_STEP_SUMMARY shows up as
+        # markdown on the run's web page. Great for surfacing key results
+        # without making someone open the logs.
+        run: |
+          echo "### Hello completed :wave:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- runner os: ${{ runner.os }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ref: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"

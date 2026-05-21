@@ -1,0 +1,26 @@
+# Completed reference for workflow 08.
+
+name: 08 · reusable (caller)
+
+on:
+  workflow_dispatch:
+    inputs:
+      where:
+        description: Target environment
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+
+jobs:
+  call:
+    uses: ./.github/workflows/07-reusable-called.yml
+    with:
+      target: ${{ inputs.where }}
+      dry_run: true
+    secrets: inherit
+
+  consume:
+    needs: call
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "result was: ${{ needs.call.outputs.result }}"
