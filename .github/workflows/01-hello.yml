@@ -36,14 +36,14 @@ jobs:
         # Without it, YAML would fold the newlines into spaces.
         run: |
           echo "Hello from a GitHub Actions runner"
-          # ${{ ... }} is GitHub Actions expression syntax. It is evaluated
+          # The "dollar-double-brace ... double-brace" syntax above is a GitHub Actions expression. It is evaluated
           # by the RUNNER, not by the shell. The result is substituted
           # before the shell sees the line. (This is also the source of
           # the script-injection vuln you'll meet in workflow 03.)
           echo "I am job: ${{ github.job }}"
           echo "I was triggered by: ${{ github.event_name }}"
 
-      - name: Show what a step looks like with uses:
+      - name: "Show what a step looks like with uses:"
         # `uses:` invokes a published action. `@v4` is a tag/branch reference.
         # For production code, pinning to a full commit SHA is safer (see
         # workflow 05 for an example). v4 is fine for a learning lab.
